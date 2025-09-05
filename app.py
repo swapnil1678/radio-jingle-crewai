@@ -101,7 +101,7 @@ if generate_button and theme:
             crew = Crew(
                 agents=[researcher, creator, copywriter],
                 tasks=[research_task, create_task, copywrite_task],
-                verbose=2
+                verbose=True  # Changed from 2 to True
             )
 
             # Run the crew
