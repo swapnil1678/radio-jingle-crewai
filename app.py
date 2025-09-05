@@ -1,19 +1,20 @@
 # app.py
 import streamlit as st
 import sys
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 # Workaround for sqlite3 version issue
 __import__('pysqlite3')
 sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 
 from crewai import Agent, Task, Crew
-from langchain_openai import ChatOpenAI
+from langchain_huggingface import HuggingFaceEndpoint
 import os
 
 # Set up the page
-st.title("Radio Jingle Generator using CrewAI")
+st.title("Radio Jingle Generator using CrewAI and SLM")
 st.markdown("""
-This app uses CrewAI to generate short radio jingles. It includes:
+This app uses CrewAI with a Small Language Model (Mistral 7B) to generate short radio jingles. It includes:
 - **Researcher AI**: Researches the theme or product.
 - **Creator AI**: Creates the initial jingle lyrics and structure.
 - **Copywriter AI**: Polishes and refines the content for radio.
@@ -21,10 +22,10 @@ This app uses CrewAI to generate short radio jingles. It includes:
 Enter a theme (e.g., "coffee shop promotion") and generate!
 """)
 
-# API Key handling
-openai_api_key = st.secrets.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
-if not openai_api_key:
-    st.error("OpenAI API key not found. Please set it in Streamlit secrets or environment variables.")
+# Hugging Face API Key handling
+hf_api_key = st.secrets.get("HUGGINGFACEHUB_API_TOKEN") or os.getenv("HUGGINGFACEHUB_API_TOKEN")
+if not hf_api_key:
+    st.error("Hugging Face API key not found. Please set it in Streamlit secrets or environment variables.")
     st.stop()
 
 # Check pip version
@@ -33,15 +34,17 @@ pip_version = pip.__version__
 if pip_version < "25.2":
     st.warning(f"Using pip {pip_version}. Consider updating to 25.2 or later for better dependency resolution.")
 
-# LLM setup
+# LLM setup with Mistral 7B
 try:
-    llm = ChatOpenAI(
-        model="gpt-4o-mini",
-        api_key=openai_api_key,
-        temperature=0.7
+    llm = HuggingFaceEndpoint(
+        endpoint_url="https://api-inference.huggingface.co/models/mixtral-8x7b-instruct-v0.1",
+        huggingfacehub_api_token=hf_api_key,
+        max_new_tokens=500,  # Limit output length
+        temperature=0.7,
+        top_p=0.9
     )
 except Exception as e:
-    st.error(f"Failed to initialize LLM: {str(e)}")
+    st.error(f"Failed to initialize SLM: {str(e)}")
     st.stop()
 
 # User input
@@ -78,7 +81,7 @@ if generate_button and theme:
 
             # Define Tasks
             research_task = Task(
-                description=f"Research the theme: '{theme}'. Gather 5-7 key points that could make a jingle engaging.",
+                description=f"Research '{theme}'. List 5 key points for an engaging jingle.",
                 expected_output="A bullet-point list of research findings.",
                 agent=researcher
             )
@@ -101,11 +104,15 @@ if generate_button and theme:
             crew = Crew(
                 agents=[researcher, creator, copywriter],
                 tasks=[research_task, create_task, copywrite_task],
-                verbose=True  # Changed from 2 to True
+                verbose=True
             )
 
-            # Run the crew
-            result = crew.kickoff()
+            # Run the crew with retry logic
+            @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
+            def run_crew():
+                return crew.kickoff()
+
+            result = run_crew()
 
             # Display results
             st.success("Jingle generated!")
