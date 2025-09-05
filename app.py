@@ -1,9 +1,14 @@
 # app.py
 import streamlit as st
+import sys
+
+# Workaround for sqlite3 version issue
+__import__('pysqlite3')
+sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+
 from crewai import Agent, Task, Crew
 from langchain_openai import ChatOpenAI
 import os
-import sys
 
 # Set up the page
 st.title("Radio Jingle Generator using CrewAI")
