@@ -25,7 +25,10 @@ Enter a theme (e.g., "coffee shop promotion") and generate!
 # Hugging Face API Key handling
 hf_api_key = st.secrets.get("HUGGINGFACEHUB_API_TOKEN") or os.getenv("HUGGINGFACEHUB_API_TOKEN")
 if not hf_api_key:
-    st.error("Hugging Face API key not found. Please set it in Streamlit secrets or environment variables.")
+    st.error("Hugging Face API key not found. Please set 'HUGGINGFACEHUB_API_TOKEN' in Streamlit secrets or environment variables.")
+    st.stop()
+if not hf_api_key.startswith("hf_"):
+    st.error("Invalid Hugging Face API token. It should start with 'hf_'. Please check and update the token in Streamlit secrets.")
     st.stop()
 
 # Check pip version
@@ -39,10 +42,15 @@ try:
     llm = HuggingFaceEndpoint(
         endpoint_url="https://api-inference.huggingface.co/models/mixtral-8x7b-instruct-v0.1",
         huggingfacehub_api_token=hf_api_key,
-        max_new_tokens=500,  # Limit output length
+        max_new_tokens=500,
         temperature=0.7,
-        top_p=0.9
+        top_p=0.9,
+        retry_on_rate_limit=True,  # Automatically retry on rate limit errors
+        timeout=30  # Set timeout to avoid hanging
     )
+    # Test the endpoint with a simple query
+    test_response = llm.invoke("Test connection to Hugging Face API")
+    st.write("Hugging Face API connection successful! Response: " + test_response[:100] + "...")
 except Exception as e:
     st.error(f"Failed to initialize SLM: {str(e)}")
     st.stop()
@@ -110,7 +118,10 @@ if generate_button and theme:
             # Run the crew with retry logic
             @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
             def run_crew():
-                return crew.kickoff()
+                try:
+                    return crew.kickoff()
+                except Exception as inner_e:
+                    raise Exception(f"Crew execution failed: {str(inner_e)}")
 
             result = run_crew()
 
