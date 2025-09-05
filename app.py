@@ -31,6 +31,11 @@ if not hf_api_key.startswith("hf_"):
     st.error("Invalid Hugging Face API token. It should start with 'hf_'. Please check and update the token in Streamlit secrets.")
     st.stop()
 
+# Check Python version
+py_version = sys.version_info
+if py_version.major == 3 and py_version.minor > 11:
+    st.warning(f"Running on Python {py_version.major}.{py_version.minor}. Python 3.11 is recommended for compatibility.")
+
 # Check pip version
 import pip
 pip_version = pip.__version__
@@ -45,8 +50,8 @@ try:
         max_new_tokens=500,
         temperature=0.7,
         top_p=0.9,
-        retry_on_rate_limit=True,  # Automatically retry on rate limit errors
-        timeout=30  # Set timeout to avoid hanging
+        model_kwargs={"retry_on_rate_limit": True},  # Moved to model_kwargs
+        timeout=30
     )
     # Test the endpoint with a simple query
     test_response = llm.invoke("Test connection to Hugging Face API")
